@@ -5,20 +5,22 @@ A robust shell-based solution for backing up and restoring website files and dat
 ## Features
 
 - Full website file backup using Git for version control
-- MySQL database backup
+- MySQL database backup with retry logic
 - Point-in-time restore capabilities
 - Configurable site settings
 - Detailed logging in Markdown format
+- Batch processing for large sites
+- Resource optimization for Git operations
+- Comprehensive error handling and recovery
 
 ## Files
 
-- `backup_config.sh` - Configuration file for sites and backup settings
-- `backup_sites.sh` - Main backup script
-- `restore_site.sh` - Script to restore sites from backups
+- `config.sh` - Configuration file for sites and backup settings
+- `backup.sh` - Main script for backup and restore operations
 
 ## Setup
 
-1. Update the `backup_config.sh` file with your site details:
+1. Update the `config.sh` file with your site details:
 
 ```bash
 # Site configurations
@@ -32,62 +34,96 @@ SITES=(
 BACKUP_ROOT="backups"
 ```
 
-2. Make scripts executable:
+2. Make the script executable:
 
 ```bash
-chmod +x backup_sites.sh restore_site.sh
+chmod +x backup.sh
 ```
 
 ## Usage
+
+The script provides a command-line interface with several commands:
+
+```bash
+./backup.sh [COMMAND] [OPTIONS]
+```
+
+### Commands
+
+- `backup` - Run backup for all configured sites (default if no command specified)
+- `restore <site> [commit]` - Restore a site from backup
+- `list-backups <site>` - List all available backups for a specific site
+- `list-sites` - List all configured sites
+- `help` - Show usage information
 
 ### Backup
 
 Run the backup script to back up all configured sites:
 
 ```bash
-./backup_sites.sh
+./backup.sh
+# or explicitly
+./backup.sh backup
 ```
 
 This will:
 - Create Git repositories for each site if they don't exist
 - Back up all website files using Git for version control
-- Export MySQL databases
+- Export MySQL databases with retry logic
+- Process large sites using batch operations if needed
 - Log all operations to `backup_log.md`
 
 ### Restore
 
-To restore a site:
+To restore a site from backup:
 
 ```bash
-./restore_site.sh <folder_name> [commit_hash]
+./backup.sh restore <site_name> [commit_hash]
 ```
 
 Arguments:
-- `folder_name`: The name of the site folder to restore
+- `site_name`: The name of the site folder to restore
 - `commit_hash`: (Optional) The Git commit hash to restore from
   If not provided, the latest backup will be used
 
-Options:
-- `-l, --list`: List available backups for the specified site
-- `-h, --help`: Show help message
-
-Examples:
+Example usage:
 
 ```bash
 # Restore the latest backup for 'site1'
-./restore_site.sh site1
-
-# List available backups for 'site1'
-./restore_site.sh site1 --list
+./backup.sh restore site1
 
 # Restore 'site1' to a specific backup (can use partial commit hash)
-./restore_site.sh site1 a1b2c3
+./backup.sh restore site1 a1b2c3
+```
+
+### List Available Backups
+
+To view available backups for a site:
+
+```bash
+./backup.sh list-backups site1
+```
+
+### List Configured Sites
+
+To see all sites configured in config.sh:
+
+```bash
+./backup.sh list-sites
 ```
 
 ## Logs
 
-- Backup operations are logged to `backup_log.md`
-- Restore operations are logged to `restore_log.md`
+All operations are logged to `backup_log.md` with timestamps and detailed information about each step of the process.
+
+## Resource Optimization
+
+The script includes several optimizations to handle large sites:
+
+- Git configuration tuning to reduce resource usage
+- Batch processing for large directories
+- Automatic retry logic with exponential backoff
+- Detection and handling of resource limitations
 
 ## Security Considerations
 
@@ -95,11 +131,19 @@ Examples:
 - Ensure backup files are stored securely
 - Consider encrypting sensitive backups
 
+## Error Handling
+
+The script includes comprehensive error handling:
+- Retries for database operations
+- Batch processing for Git operations that might fail due to resource constraints
+- Detailed error logging
+- Fallback mechanisms for large repositories
+
 ## Automation
 
 For automated backups, add a cron job:
 
 ```bash
 # Run backup daily at 2 AM
-0 2 * * * /path/to/backup_sites.sh
+0 2 * * * /path/to/backup.sh
 ``` 

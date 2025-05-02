@@ -18,8 +18,9 @@ YEARLY_BACKUP_YEARS=5     # Keep yearly backups for 5 years
 # Rsync exclusion patterns - add any paths you want to exclude
 RSYNC_EXCLUDE=(
 	"*.log"
-	"cache/*"
-	"tmp/*"
-	".git/*"
-	"node_modules/*"
+	"cache/"
+	"tmp/"
+	".git/"
+	"node_modules/"
+	"*_backup.sql"
 ) 

@@ -48,9 +48,19 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 NICE_TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
 
 # Set log file for Markdown output
-LOG_MD="backup_log.md"
+LOG_MD="$SCRIPT_DIR/backup_log.md"
 
+# Check if rsync supports --info=progress2
+check_rsync_info_progress() {
+	if rsync --help | grep -q -- "--info"; then
+		echo "--info=progress2"
+	else
+		echo ""
+	fi
+}
 
+# Store rsync progress option
+RSYNC_PROGRESS_OPT=$(check_rsync_info_progress)
 
 # Colors for logging
 RED='\033[0;31m'
@@ -102,19 +112,19 @@ git_add_with_retry() {
 	local batch_size=1000
 	
 	# First try adding everything at once
-	log_message "Adding files to Git repository..." "$DARK_GRAY"
+	log_message "Adding files to Git repository..." "$GRAY"
 	if git -C "$repo_dir" add .; then
 		return 0
 	fi
 	
 	# If the bulk add failed, try batch processing
-	log_message "Bulk add failed, trying batch processing..." "$DARK_GRAY"
+	log_message "Bulk add failed, trying batch processing..." "$GRAY"
 	
 	# Find all files except .git directory files
 	local file_list=$(find "$repo_dir" -type f -not -path "*/\.git/*")
 	local total_files=$(echo "$file_list" | wc -l)
 	
-	log_message "Processing $total_files files in batches of $batch_size" "$DARK_GRAY"
+	log_message "Processing $total_files files in batches of $batch_size" "$GRAY"
 	
 	# Process in batches
 	local current=0
@@ -138,7 +148,7 @@ git_add_with_retry() {
 				retry_count=$((retry_count + 1))
 				# Only log every 100 files to avoid excessive logging
 				if [ $((current % 100)) -eq 0 ]; then
-					log_message "Retrying file $current of $total_files (attempt $retry_count)..." "$DARK_GRAY"
+					log_message "Retrying file $current of $total_files (attempt $retry_count)..." "$GRAY"
 				fi
 				sleep 1
 			fi
@@ -146,7 +156,7 @@ git_add_with_retry() {
 		
 		# Log progress periodically
 		if [ $((current % 1000)) -eq 0 ]; then
-			log_message "Processed $current of $total_files files..." "$DARK_GRAY"
+			log_message "Processed $current of $total_files files..." "$GRAY"
 		fi
 		
 	done <<< "$file_list"
@@ -168,7 +178,7 @@ backup_database() {
 	
 	local backup_file="$backup_dir/${db_name}_backup.sql"
 	
-	log_message "Starting database backup for $output_folder" "$DARK_GRAY"
+	log_message "Starting database backup for $output_folder" "$GRAY"
 	
 	# Check if mysqldump command exists
 	if ! command -v "$MYSQLDUMP" &> /dev/null; then
@@ -211,7 +221,7 @@ setup_git_repo() {
 	
 	# Initialize Git repository if it doesn't exist
 	if [ ! -d "$repo_dir/.git" ]; then
-		log_message "Initializing new Git repository in $repo_dir" "$DARK_GRAY"
+		log_message "Initializing new Git repository in $repo_dir" "$GRAY"
 		
 		# Initialize new repository with retries
 		local init_success=0
@@ -258,8 +268,8 @@ setup_git_repo() {
 	fi
 	
 	# Copy files to backup directory, excluding .git and preserving database backup
-	log_message "Copying files to backup directory..." "$DARK_GRAY"
-	rsync -a --exclude='.git' --exclude='*_backup.sql' "$source_dir/" "$repo_dir/"
+	log_message "Copying files to backup directory..." "$GRAY"
+	rsync -a $RSYNC_PROGRESS_OPT --exclude='.git' --exclude='*_backup.sql' "$source_dir/" "$repo_dir/"
 	sleep 2
 	
 	# Add and commit changes using our custom function with batching and retry
@@ -281,7 +291,7 @@ setup_git_repo() {
 		while [ $retry_count -lt $max_retries ] && [ $commit_success -eq 0 ]; do
 			if git -C "$repo_dir" commit -m "Backup from $NICE_TIMESTAMP"; then
 				commit_success=1
-				log_message "Changes committed successfully" "$DARK_GRAY"
+				log_message "Changes committed successfully" "$GRAY"
 			else
 				retry_count=$((retry_count + 1))
 				if [ $retry_count -lt $max_retries ]; then
@@ -310,7 +320,7 @@ setup_git_repo() {
 		sleep 2
 		
 		# Clean up Git repository
-		log_message "Cleaning up Git repository..." "$DARK_GRAY"
+		log_message "Cleaning up Git repository..." "$GRAY"
 		rm -f "$repo_dir/.git/gc.log" 2>/dev/null
 		git -C "$repo_dir" gc --auto --quiet
 	fi
@@ -334,7 +344,7 @@ backup_files() {
 		source_dir="$SITES_ROOT/$source_path"
 	fi
 	
-	log_message "Starting file backup for $output_folder" "$DARK_GRAY"
+	log_message "Starting file backup for $output_folder" "$GRAY"
 	
 	# Setup Git repository and perform backup
 	if setup_git_repo "$backup_dir" "$source_dir"; then
@@ -395,10 +405,10 @@ restore_database() {
 		return 1
 	fi
 	
-	log_message "Starting database restore for $output_folder" "$DARK_GRAY"
+	log_message "Starting database restore for $output_folder" "$GRAY"
 	
 	# Perform the database restore
-	log_message "Running mysql restore..." "$DARK_GRAY"
+	log_message "Running mysql restore..." "$GRAY"
 	if ! "$MYSQL" -u "$db_user" -p"$db_pass" "$db_name" < "$backup_file"; then
 		log_error "Database restore failed for $output_folder: mysql error"
 		return 1
@@ -426,7 +436,7 @@ restore_files() {
 		restore_dir="$SITES_ROOT/$source_path"
 	fi
 	
-	log_message "Starting file restore for $output_folder" "$DARK_GRAY"
+	log_message "Starting file restore for $output_folder" "$GRAY"
 	
 	if [ ! -d "$backup_dir/.git" ]; then
 		log_error "No Git repository found for $output_folder"
@@ -456,7 +466,7 @@ restore_files() {
 	fi
 	
 	# Checkout the specified commit
-	log_message "Checking out files from commit $commit_hash..." "$DARK_GRAY"
+	log_message "Checking out files from commit $commit_hash..." "$GRAY"
 	if ! git -C "$backup_dir" checkout "$commit_hash" -- .; then
 		log_error "Failed to checkout commit $commit_hash for $output_folder"
 		return 1
@@ -466,8 +476,8 @@ restore_files() {
 	mkdir -p "$restore_dir"
 	
 	# Copy restored files back to source, excluding .git and database backup
-	log_message "Copying files to destination directory..." "$DARK_GRAY"
-	rsync -a --delete --exclude='.git' --exclude='*_backup.sql' "$backup_dir/" "$restore_dir/"
+	log_message "Copying files to destination directory..." "$GRAY"
+	rsync -a $RSYNC_PROGRESS_OPT --delete --exclude='.git' --exclude='*_backup.sql' "$backup_dir/" "$restore_dir/"
 	
 	log_message "File restore completed for $output_folder" "$GREEN"
 	return 0

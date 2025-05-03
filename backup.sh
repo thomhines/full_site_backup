@@ -3,10 +3,27 @@
 # Ensure PATH is set correctly for cron, especially for running git
 export PATH=/usr/local/cpanel/3rdparty/lib/path-bin:/usr/local/bin:/usr/bin:/bin
 
-cd /home2/hilosdes
+# Get the current directory as the script's directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Define sites root directory (default is current directory)
+SITES_ROOT="${SITES_ROOT:-$SCRIPT_DIR}"
 
 # Source the configuration file
-source "$(dirname "$0")/config.sh"
+source "$SCRIPT_DIR/config.sh"
+
+# Configure MySQL paths based on config
+if [ -n "$MYSQL_BIN_PATH" ] && [ -d "$MYSQL_BIN_PATH" ]; then
+	MYSQLDUMP="$MYSQL_BIN_PATH/mysqldump"
+	MYSQL="$MYSQL_BIN_PATH/mysql"
+else
+	# Fall back to system binaries
+	MYSQLDUMP="mysqldump"
+	MYSQL="mysql"
+fi
+
+# Create absolute path for backup root
+BACKUP_ROOT="$SCRIPT_DIR/$BACKUP_ROOT"
 
 # Configure Git to use 'main' as default branch
 git config --global init.defaultBranch main
@@ -33,27 +50,20 @@ NICE_TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
 # Set log file for Markdown output
 LOG_MD="backup_log.md"
 
-# Add timestamp at the very beginning of the process
-{
-	echo 
-	echo
-	echo
-	echo
-	echo "--------------------------------"
-	echo
-	echo
-	echo
-	echo "**Backup started:**"
-	echo "$NICE_TIMESTAMP"
-	echo
-} >> "$LOG_MD"
+
 
 # Colors for logging
 RED='\033[0;31m'
+LIGHT_RED='\033[1;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+GRAY='\033[0;37m'
+DARK_GRAY='\033[1;30m'
+
 NC='\033[0m' # No Color
 
 # Function to log messages in Markdown
@@ -92,19 +102,19 @@ git_add_with_retry() {
 	local batch_size=1000
 	
 	# First try adding everything at once
-	log_message "Adding files to Git repository..." "$YELLOW"
+	log_message "Adding files to Git repository..." "$DARK_GRAY"
 	if git -C "$repo_dir" add .; then
 		return 0
 	fi
 	
 	# If the bulk add failed, try batch processing
-	log_message "Bulk add failed, trying batch processing..." "$YELLOW"
+	log_message "Bulk add failed, trying batch processing..." "$DARK_GRAY"
 	
 	# Find all files except .git directory files
 	local file_list=$(find "$repo_dir" -type f -not -path "*/\.git/*")
 	local total_files=$(echo "$file_list" | wc -l)
 	
-	log_message "Processing $total_files files in batches of $batch_size" "$YELLOW"
+	log_message "Processing $total_files files in batches of $batch_size" "$DARK_GRAY"
 	
 	# Process in batches
 	local current=0
@@ -128,7 +138,7 @@ git_add_with_retry() {
 				retry_count=$((retry_count + 1))
 				# Only log every 100 files to avoid excessive logging
 				if [ $((current % 100)) -eq 0 ]; then
-					log_message "Retrying file $current of $total_files (attempt $retry_count)..." "$YELLOW"
+					log_message "Retrying file $current of $total_files (attempt $retry_count)..." "$DARK_GRAY"
 				fi
 				sleep 1
 			fi
@@ -136,7 +146,7 @@ git_add_with_retry() {
 		
 		# Log progress periodically
 		if [ $((current % 1000)) -eq 0 ]; then
-			log_message "Processed $current of $total_files files..." "$YELLOW"
+			log_message "Processed $current of $total_files files..." "$DARK_GRAY"
 		fi
 		
 	done <<< "$file_list"
@@ -147,45 +157,47 @@ git_add_with_retry() {
 
 # Function to backup MySQL database
 backup_database() {
-	local folder_name="$1"
-	local db_name="$2"
-	local db_user="$3"
-	local db_pass="$4"
+	local source_path="$1"
+	local output_folder="$2"
+	local db_name="$3"
+	local db_user="$4"
+	local db_pass="$5"
 	
-	local backup_dir="$BACKUP_ROOT/$folder_name"
+	local backup_dir="$BACKUP_ROOT/$output_folder"
 	mkdir -p "$backup_dir"
 	
 	local backup_file="$backup_dir/${db_name}_backup.sql"
 	
-	log_message "Starting database backup for $folder_name" "$YELLOW"
+	log_message "Starting database backup for $output_folder" "$DARK_GRAY"
 	
-	# Perform the mysqldump with retries
-	log_message "Running mysqldump..." "$YELLOW"
+	# Check if mysqldump command exists
+	if ! command -v "$MYSQLDUMP" &> /dev/null; then
+		log_error "MySQL dump command not found at: $MYSQLDUMP"
+		log_error "Please set MYSQL_BIN_PATH in config.sh to point to your MySQL binaries"
+		return 1
+	fi
 	
 	local max_retries=3
 	local retry_count=0
 	local dump_success=0
 	
 	while [ $retry_count -lt $max_retries ] && [ $dump_success -eq 0 ]; do
-		if mysqldump -u "$db_user" -p"$db_pass" "$db_name" > "$backup_file"; then
+		if "$MYSQLDUMP" -u "$db_user" -p"$db_pass" "$db_name" > "$backup_file"; then
 			dump_success=1
 			log_message "Database dump completed successfully" "$GREEN"
 		else
 			retry_count=$((retry_count + 1))
 			if [ $retry_count -lt $max_retries ]; then
-				log_message "Database dump failed, retrying (attempt $retry_count of $max_retries)..." "$YELLOW"
+				log_message "Database dump failed, retrying (attempt $retry_count of $max_retries)..." "$LIGHT_RED"
 				sleep 5
 			else
-				log_error "Database backup failed for $folder_name: mysqldump error after $max_retries attempts"
+				log_error "Database backup failed for $output_folder: mysqldump error after $max_retries attempts"
 				rm -f "$backup_file"
 				return 1
 			fi
 		fi
 	done
-	
-	log_message "Database backup completed for $folder_name" "$GREEN"
-	
-	log_message "Database backup cleanup completed for $folder_name" "$GREEN"
+
 	return 0
 }
 
@@ -199,7 +211,7 @@ setup_git_repo() {
 	
 	# Initialize Git repository if it doesn't exist
 	if [ ! -d "$repo_dir/.git" ]; then
-		log_message "Initializing new Git repository in $repo_dir" "$YELLOW"
+		log_message "Initializing new Git repository in $repo_dir" "$DARK_GRAY"
 		
 		# Initialize new repository with retries
 		local init_success=0
@@ -212,7 +224,7 @@ setup_git_repo() {
 			else
 				retry_count=$((retry_count + 1))
 				if [ $retry_count -lt $max_retries ]; then
-					log_message "Git init failed, retrying (attempt $retry_count of $max_retries)..." "$YELLOW"
+					log_message "Git init failed, retrying (attempt $retry_count of $max_retries)..." "$LIGHT_RED"
 					sleep 3
 				else
 					log_error "Failed to initialize Git repository in $repo_dir after $max_retries attempts"
@@ -246,7 +258,7 @@ setup_git_repo() {
 	fi
 	
 	# Copy files to backup directory, excluding .git and preserving database backup
-	log_message "Copying files to backup directory..." "$YELLOW"
+	log_message "Copying files to backup directory..." "$DARK_GRAY"
 	rsync -a --exclude='.git' --exclude='*_backup.sql' "$source_dir/" "$repo_dir/"
 	sleep 2
 	
@@ -269,15 +281,15 @@ setup_git_repo() {
 		while [ $retry_count -lt $max_retries ] && [ $commit_success -eq 0 ]; do
 			if git -C "$repo_dir" commit -m "Backup from $NICE_TIMESTAMP"; then
 				commit_success=1
-				log_message "Changes committed successfully" "$GREEN"
+				log_message "Changes committed successfully" "$DARK_GRAY"
 			else
 				retry_count=$((retry_count + 1))
 				if [ $retry_count -lt $max_retries ]; then
-					log_message "Commit failed, retrying (attempt $retry_count of $max_retries)..." "$YELLOW"
+					log_message "Commit failed, retrying (attempt $retry_count of $max_retries)..." "$LIGHT_RED"
 					
 					# Check if we got the threaded lstat error
 					if [ $retry_count -eq 1 ]; then
-						log_message "Trying to optimize Git settings to handle resource limitations..." "$YELLOW"
+						log_message "Trying to optimize Git settings to handle resource limitations..." "$CYAN"
 						git -C "$repo_dir" config pack.threads 1
 						git -C "$repo_dir" config core.preloadIndex false
 						git -C "$repo_dir" config core.fsmonitor false
@@ -298,7 +310,7 @@ setup_git_repo() {
 		sleep 2
 		
 		# Clean up Git repository
-		log_message "Cleaning up Git repository..." "$YELLOW"
+		log_message "Cleaning up Git repository..." "$DARK_GRAY"
 		rm -f "$repo_dir/.git/gc.log" 2>/dev/null
 		git -C "$repo_dir" gc --auto --quiet
 	fi
@@ -308,17 +320,27 @@ setup_git_repo() {
 
 # Function to backup files using Git
 backup_files() {
-	local folder_name="$1"
-	local source_dir="$folder_name"
-	local backup_dir="$BACKUP_ROOT/$folder_name"
+	local source_path="$1"
+	local output_folder="$2"
+	local backup_dir="$BACKUP_ROOT/$output_folder"
+	local source_dir=""
 	
-	log_message "Starting file backup for $folder_name" "$YELLOW"
+	# Determine if source_path is absolute or relative
+	if [[ "$source_path" == /* ]]; then
+		# Absolute path
+		source_dir="$source_path"
+	else
+		# Relative path
+		source_dir="$SITES_ROOT/$source_path"
+	fi
+	
+	log_message "Starting file backup for $output_folder" "$DARK_GRAY"
 	
 	# Setup Git repository and perform backup
 	if setup_git_repo "$backup_dir" "$source_dir"; then
-		log_message "File backup completed for $folder_name" "$GREEN"
+		log_message "File backup completed for $output_folder" "$GREEN"
 	else
-		log_error "File backup failed for $folder_name"
+		log_error "File backup failed for $output_folder"
 		return 1
 	fi
 }
@@ -340,32 +362,32 @@ find_commit() {
 
 # Function to list available backups
 list_backups() {
-	local folder_name="$1"
-	local backup_dir="$BACKUP_ROOT/$folder_name"
+	local output_folder="$1"
+	local backup_dir="$BACKUP_ROOT/$output_folder"
 	
 	if [ ! -d "$backup_dir/.git" ]; then
-		echo -e "${RED}No Git repository found for $folder_name${NC}"
+		echo -e "${RED}No Git repository found for $output_folder${NC}"
 		return 1
 	fi
 	
 	if ! git -C "$backup_dir" rev-parse --git-dir > /dev/null 2>&1; then
-		echo -e "${RED}Git repository not properly initialized for $folder_name${NC}"
+		echo -e "${RED}Git repository not properly initialized for $output_folder${NC}"
 		return 1
 	fi
 	
-	echo -e "${BLUE}Available backups for $folder_name:${NC}"
+	echo -e "${BLUE}Available backups for $output_folder:${NC}"
 	git -C "$backup_dir" log --pretty=format:"%h - %s (%cr)" --date=relative
 	echo
 }
 
 # Function to restore database
 restore_database() {
-	local folder_name="$1"
+	local output_folder="$1"
 	local db_name="$2"
 	local db_user="$3"
 	local db_pass="$4"
 	
-	local backup_dir="$BACKUP_ROOT/$folder_name"
+	local backup_dir="$BACKUP_ROOT/$output_folder"
 	local backup_file="$backup_dir/${db_name}_backup.sql"
 	
 	if [ ! -f "$backup_file" ]; then
@@ -373,35 +395,46 @@ restore_database() {
 		return 1
 	fi
 	
-	log_message "Starting database restore for $folder_name" "$YELLOW"
+	log_message "Starting database restore for $output_folder" "$DARK_GRAY"
 	
 	# Perform the database restore
-	log_message "Running mysql restore..." "$YELLOW"
-	if ! mysql -u "$db_user" -p"$db_pass" "$db_name" < "$backup_file"; then
-		log_error "Database restore failed for $folder_name: mysql error"
+	log_message "Running mysql restore..." "$DARK_GRAY"
+	if ! "$MYSQL" -u "$db_user" -p"$db_pass" "$db_name" < "$backup_file"; then
+		log_error "Database restore failed for $output_folder: mysql error"
 		return 1
 	fi
 	
-	log_message "Database restore completed for $folder_name" "$GREEN"
+	log_message "Database restore completed for $output_folder" "$GREEN"
 	return 0
 }
 
 # Function to restore files from backup
 restore_files() {
-	local folder_name="$1"
+	local output_folder="$1"
 	local commit_hash="$2"
-	local backup_dir="$BACKUP_ROOT/$folder_name"
-	local restore_dir="$folder_name"
+	local source_path="$3"
 	
-	log_message "Starting file restore for $folder_name" "$YELLOW"
+	local backup_dir="$BACKUP_ROOT/$output_folder"
+	local restore_dir=""
+	
+	# Determine if source_path is absolute or relative
+	if [[ "$source_path" == /* ]]; then
+		# Absolute path
+		restore_dir="$source_path"
+	else
+		# Relative path
+		restore_dir="$SITES_ROOT/$source_path"
+	fi
+	
+	log_message "Starting file restore for $output_folder" "$DARK_GRAY"
 	
 	if [ ! -d "$backup_dir/.git" ]; then
-		log_error "No Git repository found for $folder_name"
+		log_error "No Git repository found for $output_folder"
 		return 1
 	fi
 	
 	if ! git -C "$backup_dir" rev-parse --git-dir > /dev/null 2>&1; then
-		log_error "Git repository not properly initialized for $folder_name"
+		log_error "Git repository not properly initialized for $output_folder"
 		return 1
 	fi
 	
@@ -423,9 +456,9 @@ restore_files() {
 	fi
 	
 	# Checkout the specified commit
-	log_message "Checking out files from commit $commit_hash..." "$YELLOW"
+	log_message "Checking out files from commit $commit_hash..." "$DARK_GRAY"
 	if ! git -C "$backup_dir" checkout "$commit_hash" -- .; then
-		log_error "Failed to checkout commit $commit_hash for $folder_name"
+		log_error "Failed to checkout commit $commit_hash for $output_folder"
 		return 1
 	fi
 	
@@ -433,10 +466,10 @@ restore_files() {
 	mkdir -p "$restore_dir"
 	
 	# Copy restored files back to source, excluding .git and database backup
-	log_message "Copying files to destination directory..." "$YELLOW"
+	log_message "Copying files to destination directory..." "$DARK_GRAY"
 	rsync -a --delete --exclude='.git' --exclude='*_backup.sql' "$backup_dir/" "$restore_dir/"
 	
-	log_message "File restore completed for $folder_name" "$GREEN"
+	log_message "File restore completed for $output_folder" "$GREEN"
 	return 0
 }
 
@@ -445,9 +478,9 @@ get_site_details() {
 	local target_folder="$1"
 	
 	for site in "${SITES[@]}"; do
-		IFS=$'\t' read -r folder_name db_name db_user db_pass <<< "$site"
-		if [ "$folder_name" = "$target_folder" ]; then
-			echo "$folder_name	$db_name	$db_user	$db_pass"
+		IFS=$'\t' read -r source_path output_folder db_name db_user db_pass <<< "$site"
+		if [ "$output_folder" = "$target_folder" ]; then
+			echo "$source_path	$output_folder	$db_name	$db_user	$db_pass"
 			return 0
 		fi
 	done
@@ -459,18 +492,18 @@ get_site_details() {
 list_sites() {
 	echo -e "${BLUE}Configured sites:${NC}"
 	for site in "${SITES[@]}"; do
-		IFS=$'\t' read -r folder_name db_name db_user db_pass <<< "$site"
-		echo "  - $folder_name"
+		IFS=$'\t' read -r source_path output_folder db_name db_user db_pass <<< "$site"
+		echo "  - $output_folder (source: $source_path)"
 	done
 }
 
 # Main restore process
 run_restore() {
-	local folder_name="$1"
+	local output_folder="$1"
 	local commit_hash="$2"
 	
 	# Check if folder name is provided
-	if [ -z "$folder_name" ]; then
+	if [ -z "$output_folder" ]; then
 		echo -e "${RED}Error: Folder name not provided${NC}"
 		echo "Usage: $0 restore <site_name> [commit_hash]"
 		echo "To see available sites, use: $0 list-sites"
@@ -481,21 +514,23 @@ run_restore() {
 	mkdir -p "$BACKUP_ROOT"
 	
 	# Get site details
-	site_details=$(get_site_details "$folder_name")
+	site_details=$(get_site_details "$output_folder")
 	
 	if [ -z "$site_details" ]; then
-		echo -e "${RED}Site '$folder_name' not found in configuration${NC}"
+		echo -e "${RED}Site '$output_folder' not found in configuration${NC}"
 		echo "Available sites:"
 		for site in "${SITES[@]}"; do
-			IFS=$'\t' read -r site_folder_name _ _ _ <<< "$site"
-			echo "  - $site_folder_name"
+			IFS=$'\t' read -r site_source_path site_output_folder _ _ _ <<< "$site"
+			echo "  - $site_output_folder"
 		done
 		exit 1
 	fi
 	
-	IFS=$'\t' read -r _ db_name db_user db_pass <<< "$site_details"
+	IFS=$'\t' read -r source_path output_folder db_name db_user db_pass <<< "$site_details"
 	
-	echo -e "${GREEN}Starting restore for site: $folder_name${NC}"
+	echo -e "${GREEN}Starting restore for site: $output_folder${NC}"
+	echo -e "${GREEN}Source path: $source_path${NC}"
+	echo -e "${GREEN}Backup path: $BACKUP_ROOT/$output_folder${NC}"
 	
 	# Update log file
 	{
@@ -505,24 +540,25 @@ run_restore() {
 		echo
 		echo "**Restore started:**"
 		echo "$(date '+%Y-%m-%d %H:%M:%S')"
-		echo "Site: $folder_name"
+		echo "Site: $output_folder"
+		echo "Path: $source_path"
 		echo
 	} >> "$LOG_MD"
 	
 	# Restore files first
-	if ! restore_files "$folder_name" "$commit_hash"; then
-		log_error "File restore failed for $folder_name"
+	if ! restore_files "$output_folder" "$commit_hash" "$source_path"; then
+		log_error "File restore failed for $output_folder"
 		exit 1
 	fi
 	
 	# Then restore database
-	if ! restore_database "$folder_name" "$db_name" "$db_user" "$db_pass"; then
-		log_error "Database restore failed for $folder_name"
+	if ! restore_database "$output_folder" "$db_name" "$db_user" "$db_pass"; then
+		log_error "Database restore failed for $output_folder"
 		exit 1
 	fi
 	
-	log_message "## Restore process completed successfully for $folder_name" "$GREEN"
-	echo -e "${GREEN}Restore completed successfully for $folder_name${NC}"
+	log_message "## Restore process completed successfully for $output_folder" "$GREEN"
+	echo -e "${GREEN}Restore completed successfully for $output_folder${NC}"
 }
 
 # Function to display usage information
@@ -551,14 +587,33 @@ show_usage() {
 run_backup() {
 	# Create backup root directory if it doesn't exist
 	mkdir -p "$BACKUP_ROOT"
+
+	# Add timestamp at the very beginning of the process
+	{
+		echo 
+		echo
+		echo
+		echo
+		echo "--------------------------------"
+		echo
+		echo
+		echo
+		echo "**Backup started:**"
+		echo "$NICE_TIMESTAMP"
+		echo
+	} >> "$LOG_MD"
+
+	echo
+	echo "Backup started"
+	echo
 	
 	# Process each site
 	for site in "${SITES[@]}"; do
-		IFS=$'\t' read -r folder_name db_name db_user db_pass <<< "$site"
+		IFS=$'\t' read -r source_path output_folder db_name db_user db_pass <<< "$site"
 		echo " " >> "$LOG_MD"
-		log_message "### Processing site: $folder_name"
-		backup_database "$folder_name" "$db_name" "$db_user" "$db_pass"
-		backup_files "$folder_name"
+		log_message "### Processing '$output_folder'" "$YELLOW"
+		backup_database "$source_path" "$output_folder" "$db_name" "$db_user" "$db_pass"
+		backup_files "$source_path" "$output_folder"
 		echo " " >> "$LOG_MD"
 		echo
 	done

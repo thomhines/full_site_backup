@@ -24,17 +24,23 @@ A robust shell-based solution for backing up and restoring website files and dat
 
 ```bash
 # Site configurations
-# Format: SITES=(folder_name database_name db_user db_password)
+# Format: SITES=(
+#    "source_folder_path	output_folder_name	database_name	db_user	db_password"
+# )
+#
+# source_folder_path: Path to the website folder to backup (relative to SITES_ROOT or absolute)
+# output_folder_name: Name of the folder where backups will be stored (inside BACKUP_ROOT)
 SITES=(
-	"site1	site1_db	site1_user	site1_pass"
+	# "site1	site1_backup	site1_db	site1_user	site1_pass"
 	# Add more sites as needed
 )
 
-# Backup directory
-BACKUP_ROOT="backups"
-```
+2. Configure MySQL paths (if needed):
+   - For MAMP on macOS: Set `MYSQL_BIN_PATH="/Applications/MAMP/Library/bin"`
+   - For XAMPP on Windows: Set `MYSQL_BIN_PATH="C:/xampp/mysql/bin"`
+   - For system-wide MySQL: Set `MYSQL_BIN_PATH=""`
 
-2. Make the script executable:
+3. Make the script executable:
 
 ```bash
 chmod +x backup.sh
@@ -44,7 +50,7 @@ chmod +x backup.sh
 
 The script provides a command-line interface with several commands:
 
-```bash
+```bash 
 ./backup.sh [COMMAND] [OPTIONS]
 ```
 
@@ -82,18 +88,18 @@ To restore a site from backup:
 ```
 
 Arguments:
-- `site_name`: The name of the site folder to restore
+- `site_name`: The output folder name of the site to restore
 - `commit_hash`: (Optional) The Git commit hash to restore from
   If not provided, the latest backup will be used
 
 Example usage:
 
 ```bash
-# Restore the latest backup for 'site1'
-./backup.sh restore site1
+# Restore the latest backup for 'site1_backup'
+./backup.sh restore site1_backup
 
-# Restore 'site1' to a specific backup (can use partial commit hash)
-./backup.sh restore site1 a1b2c3
+# Restore 'site1_backup' to a specific backup (can use partial commit hash)
+./backup.sh restore site1_backup a1b2c3
 ```
 
 ### List Available Backups
@@ -101,7 +107,7 @@ Example usage:
 To view available backups for a site:
 
 ```bash
-./backup.sh list-backups site1
+./backup.sh list-backups site1_backup
 ```
 
 ### List Configured Sites

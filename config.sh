@@ -1,19 +1,24 @@
 # Site configurations
-# Format: SITES=(folder_name database_name db_user db_password)
+# Format: SITES=(
+#    "source_folder_path	output_folder_name	database_name	db_user	db_password"
+# )
+#
+# source_folder_path: Path to the website folder to backup (relative to this folder or absolute)
+# output_folder_name: Name of the folder where backups will be stored (inside './backups')
+# database_name: Name of the MySQL database to backup
+# db_user: Database username
+# db_password: Database password
+
 SITES=(
-	"test	bzzy	root	root"
-	# "site1	site1_db	site1_user	site1_pass"
-	# "site2	site2_db	site2_user	site2_pass"
-	# "site3	site3_db	site3_user	site3_pass"
-	# "site4	site4_db	site4_user	site4_pass"
+	# "path/to/site1	site1	site1_db	site1_user	site1_pass"
+	# Add more sites as needed
 )
 
 # Backup directory
 BACKUP_ROOT="backups"
 
-# Backup retention settings
-MONTHLY_BACKUP_MONTHS=24  # Keep monthly backups for 2 years
-YEARLY_BACKUP_YEARS=5     # Keep yearly backups for 5 years
+# MySQL binary paths (for MAMP or custom MySQL installations)
+MYSQL_BIN_PATH=""  # Set to empty for system-wide MySQL
 
 # Rsync exclusion patterns - add any paths you want to exclude
 RSYNC_EXCLUDE=(

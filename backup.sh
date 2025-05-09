@@ -52,8 +52,8 @@ LOG_MD="$SCRIPT_DIR/backup_log.md"
 
 # Check if rsync supports --info=progress2
 check_rsync_info_progress() {
-	# Disable progress output if running from cron (no TERM set)
-	if [ -z "$TERM" ]; then
+	# Disable progress output if running from cron (no TERM set or TERM=dumb)
+	if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
 		echo ""
 		return
 	fi

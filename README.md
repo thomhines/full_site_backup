@@ -12,6 +12,7 @@ A robust shell-based solution for backing up and restoring website files and dat
 - Batch processing for large sites
 - Resource optimization for Git operations
 - Comprehensive error handling and recovery
+- Support for backing up individual sites or all sites
 
 ## Files
 
@@ -63,7 +64,7 @@ The script provides a command-line interface with several commands:
 
 ### Commands
 
-- `backup` - Run backup for all configured sites (default if no command specified)
+- `backup [site]` - Run backup for all configured sites or a specific site
 - `restore <site> [commit]` - Restore a site from backup
 - `list-backups <site>` - List all available backups for a specific site
 - `list-sites` - List all configured sites
@@ -77,6 +78,12 @@ Run the backup script to back up all configured sites:
 ./backup.sh
 # or explicitly
 ./backup.sh backup
+```
+
+To back up a specific site:
+
+```bash
+./backup.sh backup site1_backup
 ```
 
 This will:
@@ -159,4 +166,7 @@ For automated backups, add a cron job:
 ```bash
 # Run backup daily at 2 AM
 0 2 * * * /path/to/backup.sh
+
+# Or to backup a specific site daily at 2 AM
+0 2 * * * /path/to/backup.sh backup site1_backup
 ``` 

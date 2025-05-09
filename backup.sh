@@ -584,30 +584,10 @@ run_restore() {
 	echo
 }
 
-# Function to display usage information
-show_usage() {
-	echo "Usage: $0 [COMMAND] [OPTIONS]"
-	echo
-	echo "Commands:"
-	echo "  backup                     Run backup for all configured sites (default)"
-	echo "  restore <site> [commit]    Restore a site from backup"
-	echo "  list-backups <site>        List available backups for a specific site"
-	echo "  list-sites                 List all configured sites"
-	echo "  help                       Show this help message"
-	echo
-	echo "Options:"
-	echo "  -h, --help                 Show this help message"
-	echo
-	echo "Examples:"
-	echo "  $0                         Run backup for all sites"
-	echo "  $0 restore site1           Restore 'site1' from the latest backup"
-	echo "  $0 restore site1 a1b2c3    Restore 'site1' from a specific backup commit"
-	echo "  $0 list-backups site1      List all backups for 'site1'"
-	echo "  $0 list-sites              Show all configured sites"
-}
-
 # Main backup process
 run_backup() {
+	local target_site="$1"
+	
 	# Create backup root directory if it doesn't exist
 	mkdir -p "$BACKUP_ROOT"
 
@@ -633,6 +613,12 @@ run_backup() {
 	# Process each site
 	for site in "${SITES[@]}"; do
 		IFS=$'\t' read -r source_path output_folder db_name db_user db_pass <<< "$site"
+		
+		# If a target site is specified, skip other sites
+		if [ -n "$target_site" ] && [ "$output_folder" != "$target_site" ]; then
+			continue
+		fi
+		
 		echo " " >> "$LOG_MD"
 		log_message "### Processing '$output_folder'" "$YELLOW"
 		backup_database "$source_path" "$output_folder" "$db_name" "$db_user" "$db_pass"
@@ -643,6 +629,30 @@ run_backup() {
 	
 	log_message "## Backup process completed"
 	echo
+}
+
+# Function to display usage information
+show_usage() {
+	echo "Usage: $0 [COMMAND] [OPTIONS]"
+	echo
+	echo "Commands:"
+	echo "  backup [site]              Run backup for all configured sites or a specific site"
+	echo "  restore <site> [commit]    Restore a site from backup"
+	echo "  list-backups <site>        List available backups for a specific site"
+	echo "  list-sites                 List all configured sites"
+	echo "  help                       Show this help message"
+	echo
+	echo "Options:"
+	echo "  -h, --help                 Show this help message"
+	echo
+	echo "Examples:"
+	echo "  $0                         Run backup for all sites"
+	echo "  $0 backup                  Run backup for all sites"
+	echo "  $0 backup site1            Run backup for 'site1' only"
+	echo "  $0 restore site1           Restore 'site1' from the latest backup"
+	echo "  $0 restore site1 a1b2c3    Restore 'site1' from a specific backup commit"
+	echo "  $0 list-backups site1      List all backups for 'site1'"
+	echo "  $0 list-sites              Show all configured sites"
 }
 
 # Process command line arguments
@@ -656,7 +666,7 @@ process_args() {
 	# Handle arguments
 	case "$1" in
 		backup)
-			run_backup
+			run_backup "$2"
 			;;
 		restore)
 			run_restore "$2" "$3"

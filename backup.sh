@@ -194,11 +194,11 @@ backup_database() {
 	while [ $retry_count -lt $max_retries ] && [ $dump_success -eq 0 ]; do
 		if "$MYSQLDUMP" -u "$db_user" -p"$db_pass" "$db_name" > "$backup_file"; then
 			dump_success=1
-			log_message "Database dump completed successfully" "$GREEN"
+			log_message "Database backup completed successfully" "$GREEN"
 		else
 			retry_count=$((retry_count + 1))
 			if [ $retry_count -lt $max_retries ]; then
-				log_message "Database dump failed, retrying (attempt $retry_count of $max_retries)..." "$LIGHT_RED"
+				log_message "Database backup failed, retrying (attempt $retry_count of $max_retries)..." "$LIGHT_RED"
 				sleep 5
 			else
 				log_error "Database backup failed for $output_folder: mysqldump error after $max_retries attempts"
@@ -538,9 +538,20 @@ run_restore() {
 	
 	IFS=$'\t' read -r source_path output_folder db_name db_user db_pass <<< "$site_details"
 	
-	echo -e "${GREEN}Starting restore for site: $output_folder${NC}"
-	echo -e "${GREEN}Source path: $source_path${NC}"
-	echo -e "${GREEN}Backup path: $BACKUP_ROOT/$output_folder${NC}"
+	echo
+	echo -e "${YELLOW}Starting restore for site: $output_folder${NC}"
+	echo -e "Source path: $source_path"
+	echo -e "Backup path: $BACKUP_ROOT/$output_folder"
+	echo
+	echo -e "${RED}WARNING: This will overwrite all files at '$source_path' and overwrite the existing '$db_name' database.${NC}"
+	read -p 'Are you sure you want to proceed? (y/N): ' response
+	echo -e "${NC}"
+	
+	if [[ ! "$response" =~ ^[Yy]$ ]]; then
+		echo -e "${YELLOW}Restore cancelled by user${NC}"
+		echo
+		exit 0
+	fi
 	
 	# Update log file
 	{
@@ -552,6 +563,8 @@ run_restore() {
 		echo "$(date '+%Y-%m-%d %H:%M:%S')"
 		echo "Site: $output_folder"
 		echo "Path: $source_path"
+		echo "Commit: $commit_hash"
+		echo "DB: $db_name"
 		echo
 	} >> "$LOG_MD"
 	
@@ -567,8 +580,8 @@ run_restore() {
 		exit 1
 	fi
 	
-	log_message "## Restore process completed successfully for $output_folder" "$GREEN"
-	echo -e "${GREEN}Restore completed successfully for $output_folder${NC}"
+	log_message "Restore process completed successfully for $output_folder" "$YELLOW"
+	echo
 }
 
 # Function to display usage information

@@ -15,12 +15,18 @@ A robust shell-based solution for backing up and restoring website files and dat
 
 ## Files
 
-- `config.sh` - Configuration file for sites and backup settings
+- `config.sh.example` - Template configuration file for sites and backup settings
 - `backup.sh` - Main script for backup and restore operations
 
 ## Setup
 
-1. Update the `config.sh` file with your site details:
+1. Copy the example configuration file and update it with your site details:
+
+```bash
+cp config.sh.example config.sh
+```
+
+Then edit `config.sh` with your site details:
 
 ```bash
 # Site configurations

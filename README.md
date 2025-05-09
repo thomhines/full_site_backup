@@ -40,6 +40,7 @@ SITES=(
 	# "site1	site1_backup	site1_db	site1_user	site1_pass"
 	# Add more sites as needed
 )
+```
 
 2. Configure MySQL paths (if needed):
    - For MAMP on macOS: Set `MYSQL_BIN_PATH="/Applications/MAMP/Library/bin"`

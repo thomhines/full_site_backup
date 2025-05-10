@@ -392,7 +392,7 @@ list_backups() {
 	fi
 	
 	echo -e "${BLUE}Available backups for $output_folder:${NC}"
-	git -C "$backup_dir" log --pretty=format:"%h - %s (%cr)" --date=relative
+	git -C "$backup_dir" log --reverse --pretty=format:"%h - %s (%cr)" --date=relative
 	echo
 }
 
